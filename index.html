@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mata Viva — Atlantic Forest Impact Fund</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+<!-- ─── REPLACE THESE WITH YOUR SUPABASE PROJECT VALUES ─────────────────
+     1. Go to https://supabase.com → New project (free tier)
+     2. Settings → API → copy Project URL and anon/public key
+     3. In Table Editor → New table named "mataviva_state" with columns:
+           id (int8, primary key), key (text), value (text)
+        Then insert one row: id=1, key="state", value="{}"
+     4. Enable Row Level Security → add policy: allow all (for now)
+──────────────────────────────────────────────────────────────────────── -->
+<script>
+  const SUPABASE_URL = 'YOUR_SUPABASE_URL';      // e.g. https://xxxx.supabase.co
+  const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY'; // long string from Settings > API
+  const TABLE        = 'mataviva_state';
+  const ROW_ID       = 1;
+</script>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --forest:   #0e2318;
+    --moss:     #1D9E75;
+    --mossdk:   #0F6E56;
+    --leaf:     #9fd4b0;
+    --gold:     #c4882e;
+    --goldlt:   #e8b84a;
+    --cream:    #f4f2ec;
+    --ink:      #111a15;
+    --muted:    #6b8a76;
+    --white:    #ffffff;
+    --surface:  #f9f8f5;
+    --border:   rgba(0,0,0,0.1);
+    --borderem: rgba(0,0,0,0.2);
+    --danger:   #a32d2d;
+    --info:     #185FA5;
+    --radius:   8px;
+    --radiuslg: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', system-ui, sans-serif;
+    background: var(--surface);
+    color: var(--ink);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── TOPBAR ── */
+  .topbar {
+    background: var(--forest);
+    color: var(--cream);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 52px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--moss); display: flex; align-items: center;
+    justify-content: center; font-size: 14px;
+  }
+  .brand-name { font-size: 15px; font-weight: 500; color: var(--white); }
+  .brand-sub  { font-size: 11px; color: var(--leaf); margin-left: 2px; }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .author-chips { display: flex; gap: 6px; }
+  .chip {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500; cursor: default;
+    border: 2px solid transparent; transition: border-color .15s;
+  }
+  .chip.active { border-color: var(--white); }
+  .chip-1 { background: #EEEDFE; color: #3C3489; }
+  .chip-2 { background: #E1F5EE; color: #085041; }
+  .chip-3 { background: #FAEEDA; color: #633806; }
+  .author-select {
+    font-size: 12px; padding: 4px 10px;
+    border-radius: var(--radius); border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.1); color: var(--white); cursor: pointer;
+  }
+  .sync-badge {
+    font-size: 11px; color: var(--leaf);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .sync-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--moss); transition: background .3s;
+  }
+  .sync-dot.saving { background: var(--goldlt); }
+  .sync-dot.error  { background: #e24b4a; }
+
+  /* ── TABS ── */
+  .tabs {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    padding: 0 24px;
+    overflow-x: auto;
+    position: sticky;
+    top: 52px;
+    z-index: 99;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab {
+    padding: 12px 14px; font-size: 13px; cursor: pointer;
+    border-bottom: 2px solid transparent; color: var(--muted);
+    white-space: nowrap; transition: all .15s; font-weight: 400;
+  }
+  .tab:hover  { color: var(--ink); }
+  .tab.active { color: var(--mossdk); border-bottom-color: var(--moss); font-weight: 500; }
+
+  /* ── LAYOUT ── */
+  .page { max-width: 860px; margin: 0 auto; padding: 24px 24px 60px; }
+  .section-title {
+    font-size: 11px; font-weight: 500; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 12px;
+  }
+
+  /* ── METRICS ── */
+  .metrics-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr));
+    gap: 10px; margin-bottom: 20px;
+  }
+  .metric {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: var(--radiuslg); padding: 14px 16px;
+  }
+  .metric-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 500; }
+  .metric-sub   { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── SCENARIO PILLS ── */
+  .pills { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .pill {
+    padding: 5px 14px; border-radius: 20px; font-size: 12px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--white); color: var(--muted);
+    transition: all .15s;
+  }
+  .pill:hover  { border-color: var(--moss); color: var(--mossdk); }
+  .pill.active { background: var(--moss); color: var(--white); border-color: var(--moss); }
+
+  /* ── MODEL TOGGLE ── */
+  .model-toggle {
+    display: flex; align-items: center; gap: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; margin-bottom: 20px;
+  }
+  .model-btn {
+    flex: 1; padding: 8px 12px; font-size: 12px; font-family: inherit;
+    cursor: pointer; border: none; background: transparent;
+    color: var(--muted); transition: all .15s; line-height: 1.3; text-align: center;
+  }
+  .model-btn:first-child { border-right: 1px solid var(--border); }
+  .model-btn.active { background: var(--white); color: var(--ink); font-weight: 500; }
+  .model-badge {
+    display: inline-block; font-size: 10px; padding: 1px 6px;
+    border-radius: 4px; margin-left: 5px; vertical-align: middle;
+  }
+  .model-badge.full { background: #E1F5EE; color: #085041; }
+  .model-badge.base { background: #FAEEDA; color: #633806; }
+
+  /* ── CHART ── */
+  .chart-card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: var(--radiuslg); padding: 16px; margin-bottom: 14px;
+  }
+  .chart-legend {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    font-size: 11px; color: var(--muted); margin-bottom: 10px;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-sq   { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .chart-wrap  { position: relative; width: 100%; }
+  .chart-wrap.h180 { height: 180px; }
+  .chart-wrap.h130 { height: 130px; }
+
+  /* ── TABLES ── */
+  .table-card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: var(--radiuslg); overflow: hidden; margin-bottom: 16px;
+  }
+  .table-card table {
+    width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed;
+  }
+  .table-card th {
+    padding: 8px 10px; font-weight: 500; color: var(--muted);
+    border-bottom: 1px solid var(--border); font-size: 11px;
+    text-align: left; background: var(--surface);
+  }
+  .table-card td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .table-card tr:last-child td { border-bottom: none; }
+  .table-card td:first-child { color: var(--muted); }
+  .table-card tr.total td { font-weight: 500; background: var(--surface); border-top: 1px solid var(--borderem); }
+  .table-card input[type=number], .table-card input[type=text] {
+    width: 100%; border: none; background: transparent; font-size: 12px;
+    font-family: 'DM Mono', monospace; color: var(--ink); padding: 2px 4px;
+    border-radius: 4px; text-align: right;
+  }
+  .table-card input[type=text] { text-align: left; font-family: inherit; }
+  .table-card input:focus { outline: none; background: #f0faf5; }
+  .table-card .disabled { opacity: .38; pointer-events: none; }
+  .add-row {
+    font-size: 12px; color: var(--muted); background: none; border: none;
+    cursor: pointer; padding: 8px 12px; display: flex; align-items: center; gap: 4px;
+  }
+  .add-row:hover { color: var(--ink); }
+
+  /* ── PLAN FIELDS ── */
+  .plan-field { margin-bottom: 16px; }
+  .plan-field label {
+    font-size: 12px; font-weight: 500; color: var(--muted);
+    display: block; margin-bottom: 4px;
+  }
+  .plan-field textarea {
+    width: 100%; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 9px 11px; font-size: 13px; font-family: inherit;
+    background: var(--white); color: var(--ink); resize: vertical;
+    min-height: 72px; line-height: 1.6; transition: border-color .15s;
+  }
+  .plan-field textarea:focus { outline: none; border-color: var(--moss); }
+
+  /* ── REGIONS ── */
+  .region-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  @media(max-width:500px){ .region-grid { grid-template-columns: 1fr; } }
+  .region-card {
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: var(--radiuslg); padding: 12px 14px;
+    border-left: 3px solid var(--moss);
+  }
+  .region-card.p2 { border-left-color: var(--info); }
+  .region-card.p3 { border-left-color: var(--gold); }
+  .region-name    { font-size: 13px; font-weight: 500; margin-bottom: 3px; }
+  .region-detail  { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+  /* ── FLOWCHART ── */
+  .flow-section { margin-bottom: 20px; }
+  .flow-label {
+    font-size: 10px; font-weight: 500; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em;
+    text-align: center; margin-bottom: 8px;
+  }
+  .flow-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px; }
+  .flow-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .fnode {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 9px 12px; font-size: 11px; text-align: center;
+    background: var(--white); min-width: 96px; flex-shrink: 0;
+  }
+  .fnode .ft { font-weight: 500; margin-bottom: 2px; font-size: 12px; }
+  .fnode .fm { font-size: 10px; color: var(--mossdk); line-height: 1.3; }
+  .fnode.green { border-color: var(--moss); background: #f0faf5; }
+  .fnode.green .ft { color: #085041; }
+  .fnode.blue  { border-color: var(--info); background: #EBF3FC; }
+  .fnode.blue  .ft { color: #0C447C; }
+  .fnode.gold  { border-color: var(--gold); background: #FDF5E8; }
+  .fnode.gold  .ft { color: #633806; }
+  .farr { font-size: 14px; color: var(--muted); flex-shrink: 0; margin: 0 2px; }
+  .flow-connector { width: 1px; height: 14px; background: var(--border); }
+
+  /* ── CHANGELOG ── */
+  .log-entry {
+    display: flex; gap: 10px; padding: 10px 16px;
+    border-bottom: 1px solid var(--border); font-size: 12px; align-items: flex-start;
+  }
+  .log-entry:last-child { border-bottom: none; }
+  .log-avatar {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 500;
+  }
+  .log-field  { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .log-badge  {
+    font-size: 10px; padding: 1px 7px; border-radius: 20px;
+    background: var(--surface); color: var(--muted); border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .log-time   { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .empty-state { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  /* ── SETUP BANNER ── */
+  .setup-banner {
+    background: #FDF5E8; border: 1px solid #e8b84a; border-radius: var(--radius);
+    padding: 12px 16px; margin-bottom: 20px; font-size: 12px; line-height: 1.6;
+  }
+  .setup-banner strong { color: var(--gold); }
+  .setup-banner code {
+    background: rgba(0,0,0,.06); padding: 1px 5px;
+    border-radius: 3px; font-family: 'DM Mono', monospace; font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">🌿</div>
+    <span class="brand-name">Mata Viva</span>
+    <span class="brand-sub">Atlantic Forest Impact Fund</span>
+  </div>
+  <div class="topbar-right">
+    <div class="author-chips">
+      <div class="chip chip-1 active" id="chip-1" title="Founder 1">F1</div>
+      <div class="chip chip-2" id="chip-2" title="Founder 2">F2</div>
+      <div class="chip chip-3" id="chip-3" title="Founder 3">F3</div>
+    </div>
+    <select class="author-select" id="author-select" onchange="switchAuthor(this.value)">
+      <option value="Founder 1">Founder 1</option>
+      <option value="Founder 2">Founder 2</option>
+      <option value="Founder 3">Founder 3</option>
+    </select>
+    <div class="sync-badge"><div class="sync-dot" id="sync-dot"></div><span id="sync-label">synced</span></div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('overview')">Overview</div>
+  <div class="tab" onclick="switchTab('financials')">Fund economics</div>
+  <div class="tab" onclick="switchTab('flowchart')">Business model</div>
+  <div class="tab" onclick="switchTab('plan')">Business plan</div>
+  <div class="tab" onclick="switchTab('regions')">Priority regions</div>
+  <div class="tab" onclick="switchTab('changelog')">Change log</div>
+</div>
+
+<!-- OVERVIEW -->
+<div id="tab-overview" class="page">
+  <div id="setup-banner" class="setup-banner" style="display:none">
+    <strong>⚙ Setup needed:</strong> Open <code>index.html</code> and replace <code>YOUR_SUPABASE_URL</code>
+    and <code>YOUR_SUPABASE_ANON_KEY</code> with your project values so all co-founders share the same data.
+    See <code>DEPLOY.md</code> for step-by-step instructions.
+  </div>
+  <div id="metrics-grid" class="metrics-grid"></div>
+  <div class="pills" id="scenario-pills">
+    <div class="pill" id="pill-conservative" onclick="setScenario('conservative')">Conservative</div>
+    <div class="pill active" id="pill-base" onclick="setScenario('base')">Base</div>
+    <div class="pill" id="pill-aggressive" onclick="setScenario('aggressive')">Aggressive</div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-sq" style="background:rgba(29,158,117,.65)"></div>Revenue ($000s)</div>
+      <div class="legend-item"><div class="legend-sq" style="background:rgba(163,45,45,.5)"></div>Costs ($000s)</div>
+    </div>
+    <div class="chart-wrap h180"><canvas id="revenueChart" role="img" aria-label="Annual revenue vs costs over 10 years"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-sq" style="background:#185FA5"></div>Cumulative net ($000s)</div>
+    </div>
+    <div class="chart-wrap h130"><canvas id="cashChart" role="img" aria-label="Cumulative cash position over 10 years"></canvas></div>
+  </div>
+</div>
+
+<!-- FUND ECONOMICS -->
+<div id="tab-financials" class="page" style="display:none">
+
+  <div class="model-toggle">
+    <button class="model-btn active" id="model-btn-full" onclick="setModel('full')">
+      Full stack <span class="model-badge full">Carbon + credits</span>
+    </button>
+    <button class="model-btn" id="model-btn-base" onclick="setModel('base')">
+      No-credit model <span class="model-badge base">Agroforestry + PES only</span>
+    </button>
+  </div>
+
+  <div id="model-note" style="font-size:12px;color:var(--muted);margin-bottom:16px;line-height:1.5"></div>
+
+  <p class="section-title">Per-hectare economics (30-yr horizon, USD)</p>
+  <div class="table-card">
+    <table>
+      <thead><tr><th style="width:42%">Item</th><th style="width:22%">Amount</th><th>Notes</th></tr></thead>
+      <tbody id="ha-tbody"></tbody>
+      <tfoot><tr class="total"><td>Net / ha</td><td id="ha-net" colspan="2"></td></tr></tfoot>
+    </table>
+  </div>
+
+  <p class="section-title">Annual revenue ramp (fund level, $000s)</p>
+  <div class="table-card">
+    <table>
+      <thead><tr><th style="width:32%">Stream</th><th>Yr 1</th><th>Yr 3</th><th>Yr 5</th><th>Yr 8</th><th>Yr 10</th></tr></thead>
+      <tbody id="rev-tbody"></tbody>
+    </table>
+    <button class="add-row" onclick="addRevRow()">+ add stream</button>
+  </div>
+
+  <p class="section-title">Operating costs (fund level, $000s)</p>
+  <div class="table-card">
+    <table>
+      <thead><tr><th style="width:32%">Category</th><th>Yr 1</th><th>Yr 3</th><th>Yr 5</th><th>Yr 8</th><th>Yr 10</th></tr></thead>
+      <tbody id="cost-tbody"></tbody>
+    </table>
+    <button class="add-row" onclick="addCostRow()">+ add cost</button>
+  </div>
+
+  <div class="table-card">
+    <table>
+      <tfoot><tr class="total"><td>Net yr 10 ($000s)</td><td></td><td></td><td></td><td></td><td id="net-yr10"></td></tr></tfoot>
+    </table>
+  </div>
+</div>
+
+<!-- FLOWCHART -->
+<div id="tab-flowchart" class="page" style="display:none">
+  <p class="section-title">Business model — value &amp; money flows</p>
+
+  <div class="flow-section">
+    <div class="flow-label">Foundation layer</div>
+    <div class="flow-row">
+      <div class="fnode green"><div class="ft">Cooperatives</div><div class="fm">Usufruct agreements<br>No land purchase</div></div>
+      <div class="farr">→</div>
+      <div class="fnode green"><div class="ft">Restoration planting</div><div class="fm">$4–6k/ha cost<br>Years 0–3</div></div>
+      <div class="farr">→</div>
+      <div class="fnode green"><div class="ft">MRV monitoring</div><div class="fm">Satellite + eDNA<br>Verde OS (internal)</div></div>
+    </div>
+  </div>
+
+  <div class="flow-section">
+    <div class="flow-label">Revenue streams (by year of onset)</div>
+    <div class="flow-row" style="align-items:flex-start;gap:8px">
+      <div class="flow-col">
+        <div class="fnode blue"><div class="ft">Agroforestry</div><div class="fm">From yr 3<br>$300–600/ha/yr</div></div>
+        <div class="flow-connector"></div>
+        <div style="font-size:10px;color:var(--muted);text-align:center">Cacao, coffee,<br>native fruit</div>
+      </div>
+      <div class="flow-col">
+        <div class="fnode blue"><div class="ft">PES payments</div><div class="fm">From yr 2<br>~$80/ha/yr</div></div>
+        <div class="flow-connector"></div>
+        <div style="font-size:10px;color:var(--muted);text-align:center">BNDES / PSA<br>programmes</div>
+      </div>
+      <div class="flow-col">
+        <div class="fnode blue" style="border-color:var(--moss)"><div class="ft">Forward offtake</div><div class="fm">Years 1–4<br>Ex-ante carbon</div></div>
+        <div class="flow-connector"></div>
+        <div style="font-size:10px;color:var(--muted);text-align:center">Bridges revenue<br>gap yrs 1–5</div>
+      </div>
+      <div class="flow-col">
+        <div class="fnode blue"><div class="ft">Carbon credits</div><div class="fm">From yr 5<br>$35–50/t VCU</div></div>
+        <div class="flow-connector"></div>
+        <div style="font-size:10px;color:var(--muted);text-align:center">Verra VCS<br>~250t CO₂/ha</div>
+      </div>
+      <div class="flow-col">
+        <div class="fnode blue"><div class="ft">Biodiversity credits</div><div class="fm">From yr 5+<br>$1–3k/ha</div></div>
+        <div class="flow-connector"></div>
+        <div style="font-size:10px;color:var(--muted);text-align:center">Verra Nature<br>Framework</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="flow-section">
+    <div class="flow-label">Capital &amp; governance</div>
+    <div class="flow-row">
+      <div class="fnode gold"><div class="ft">Mata Viva Fund</div><div class="fm">30-yr closed-end<br>$50M first close</div></div>
+      <div class="farr">→</div>
+      <div class="fnode gold"><div class="ft">Target LPs</div><div class="fm">Mirova · IFC · BNDES<br>&amp;Green · Climate AM</div></div>
+      <div class="farr">→</div>
+      <div class="fnode gold"><div class="ft">Target returns</div><div class="fm">8–12% IRR / 15 yrs<br>~40–50% net/ha</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- BUSINESS PLAN -->
+<div id="tab-plan" class="page" style="display:none">
+  <div id="plan-fields"></div>
+</div>
+
+<!-- PRIORITY REGIONS -->
+<div id="tab-regions" class="page" style="display:none">
+  <p class="section-title">Priority regions — Atlantic Forest</p>
+  <div class="region-grid">
+    <div class="region-card">
+      <div class="region-name">Pontal do Paranapanema (SP)</div>
+      <div class="region-detail">Phase 1 — Start here. MST/IPÊ/Coperamas infrastructure active. Black Lion Tamarin flagship species. Proof of concept site.</div>
+    </div>
+    <div class="region-card p2">
+      <div class="region-name">Serra do Mar + Vale do Ribeira (SP)</div>
+      <div class="region-detail">Phase 2 — Highest carbon density (320–460t CO₂/ha). Quilombola tenure. Premium credit pricing potential.</div>
+    </div>
+    <div class="region-card p2">
+      <div class="region-name">Southern Bahia + Espírito Santo</div>
+      <div class="region-detail">Phase 2 — World record plant density. 50%+ endemic bird species. Cabruca cocoa agroforestry ready-made.</div>
+    </div>
+    <div class="region-card p3">
+      <div class="region-name">Serra da Mantiqueira (MG/SP/RJ)</div>
+      <div class="region-detail">Phase 3 — Water credit potential stacked on carbon + biodiversity. Strong PSA programme alignment.</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+    <span><span style="display:inline-block;width:10px;height:10px;background:var(--moss);border-radius:50%;vertical-align:middle;margin-right:4px"></span>Phase 1</span>
+    <span><span style="display:inline-block;width:10px;height:10px;background:var(--info);border-radius:50%;vertical-align:middle;margin-right:4px"></span>Phase 2</span>
+    <span><span style="display:inline-block;width:10px;height:10px;background:var(--gold);border-radius:50%;vertical-align:middle;margin-right:4px"></span>Phase 3</span>
+  </div>
+</div>
+
+<!-- CHANGELOG -->
+<div id="tab-changelog" class="page" style="display:none;padding-left:0;padding-right:0">
+  <div id="changelog-list"></div>
+</div>
+
+<script>
+// ─── DEFAULT STATE ───────────────────────────────────────────────────────────
+const DEFAULT_STATE = {
+  scenario: 'base',
+  model: 'full',
+  haEcon: {
+    full: [
+      {label:'Restoration cost (yr 0–3)',     val:-5000, notes:'Planting, seedlings, labour'},
+      {label:'Annual monitoring — 30 yrs',    val:-6000, notes:'MRV total allocated'},
+      {label:'Certification & PDD',           val:-500,  notes:'Verra VCS process'},
+      {label:'Cooperative revenue share 25%', val:-2200, notes:'Community income share'},
+      {label:'Carbon credits (250t × $35)',   val:8750,  notes:'Conservative; up to $50/t'},
+      {label:'Agroforestry ($400/yr × 20)',   val:8000,  notes:'Cacao, coffee, native fruit'},
+      {label:'PES payments ($80/yr × 15)',    val:1200,  notes:'BNDES / PSA programmes'},
+      {label:'Biodiversity credits',          val:2000,  notes:'Speculative; Verra Nature Framework'},
+    ],
+    base: [
+      {label:'Restoration cost (yr 0–3)',     val:-5000, notes:'Planting, seedlings, labour'},
+      {label:'Annual monitoring — 30 yrs',    val:-6000, notes:'MRV total allocated'},
+      {label:'Certification & PDD',           val:-500,  notes:'Verra VCS process'},
+      {label:'Cooperative revenue share 25%', val:-2200, notes:'Community income share'},
+      {label:'Agroforestry ($400/yr × 20)',   val:8000,  notes:'Cacao, coffee, native fruit'},
+      {label:'PES payments ($80/yr × 15)',    val:1200,  notes:'BNDES / PSA programmes'},
+    ],
+  },
+  revenue: {
+    full: [
+      {label:'Agroforestry',                     y1:0,   y3:200, y5:800,  y8:2200, y10:4000},
+      {label:'PES / PSA payments',               y1:80,  y3:250, y5:500,  y8:900,  y10:1200},
+      {label:'Forward offtake (ex-ante carbon)', y1:300, y3:600, y5:0,    y8:0,    y10:0},
+      {label:'Carbon credits (VCU)',             y1:0,   y3:0,   y5:1200, y8:5000, y10:9000},
+      {label:'Biodiversity credits',             y1:0,   y3:0,   y5:200,  y8:800,  y10:2000},
+    ],
+    base: [
+      {label:'Agroforestry',                     y1:0,   y3:200, y5:800,  y8:2200, y10:4000},
+      {label:'PES / PSA payments',               y1:80,  y3:250, y5:500,  y8:900,  y10:1200},
+      {label:'MRV consulting (Verde OS fees)',    y1:200, y3:300, y5:300,  y8:400,  y10:500},
+    ],
+  },
+  costs: [
+    {label:'Restoration & planting ops',   y1:1200, y3:2000, y5:2500, y8:3000, y10:3200},
+    {label:'Cooperative relations & legal',y1:400,  y3:600,  y5:700,  y8:800,  y10:900},
+    {label:'MRV & monitoring (Verde OS)',  y1:300,  y3:500,  y5:700,  y8:900,  y10:1000},
+    {label:'Admin & fund management',      y1:500,  y3:600,  y5:700,  y8:800,  y10:900},
+  ],
+  plan: {
+    problem: 'The Atlantic Forest has been reduced to just 12% of its original cover — one of the most threatened ecosystems on Earth. Despite being home to 8,000 endemic plant species and flagship fauna like the Black Lion Tamarin, restoration finance remains fragmented, with no scalable cooperative-based model.',
+    solution: 'Mata Viva is a 30-year closed-end impact fund that finances Atlantic Forest restoration through usufruct agreements with landless worker cooperatives (MST). No land purchase. Communities earn from agroforestry from year 3; the fund earns from carbon and biodiversity credits from year 5. Verde OS provides internal MRV and monitoring.',
+    market: "Voluntary carbon credit market: $40–50/tonne for premium ARR credits with co-benefits vs $15 average. Atlantic Forest = world's most biodiverse biome outside the Amazon. COP30 in Brazil driving corporate demand for high-integrity Brazilian credits. $460B annual investment gap in nature-based solutions.",
+    differentiation: 'Cooperative usufruct tenure = lowest reversal risk of any land type. No land capex → structural cost advantage vs re.green and BTG TIG. Endemic species focus = premium credit pricing ($40–50+/t). Multiple stacked revenue streams reduce single-point-of-failure risk.',
+    gtm: 'Phase 1: Pontal do Paranapanema (SP) — existing MST/IPÊ/Coperamas infrastructure. Black Lion Tamarin as flagship. First close $50M from Mirova, IFC, BNDES. Forward offtake with EU corporate buyers to bridge yrs 1–5. Phase 2: Serra do Mar + Vale do Ribeira. Phase 3: Serra da Mantiqueira.',
+    team: 'CEO — cooperative relationships, investor narrative, carbon market strategy. CTO — ML/geospatial engineering, satellite MRV stack (Verde OS, internal). Field Operations Manager — cooperative onboarding, Pontal region. Carbon Market Specialist (PJ) — Verra PDD process, forward offtake.',
+    risks: 'Carbon market integrity (Verra credibility issues) — mitigated by cooperative tenure and eDNA verification. Revenue back-loading — mitigated by forward offtake and agroforestry from yr 3. Investor timeline mismatch — target impact/infrastructure LPs, not traditional VCs.',
+  },
+  changelog: [],
+};
+
+// ─── STATE & STORAGE ─────────────────────────────────────────────────────────
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let saveTimer = null;
+const isSupabaseConfigured = SUPABASE_URL !== 'YOUR_SUPABASE_URL';
+
+async function loadState() {
+  if (!isSupabaseConfigured) {
+    document.getElementById('setup-banner').style.display = 'block';
+    const local = localStorage.getItem('mataviva_state');
+    if (local) { try { state = JSON.parse(local); } catch(e){} }
+    return;
+  }
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${ROW_ID}&select=value`, {
+      headers: {'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`}
+    });
+    const rows = await res.json();
+    if (rows && rows[0] && rows[0].value && rows[0].value !== '{}') {
+      state = JSON.parse(rows[0].value);
+    }
+  } catch(e) { console.warn('Load failed, using defaults', e); }
+}
+
+async function saveState() {
+  setSyncStatus('saving');
+  if (!isSupabaseConfigured) {
+    localStorage.setItem('mataviva_state', JSON.stringify(state));
+    setTimeout(() => setSyncStatus('synced'), 400);
+    return;
+  }
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${ROW_ID}`, {
+      method: 'PATCH',
+      headers: {
+        'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json', 'Prefer': 'return=minimal'
+      },
+      body: JSON.stringify({value: JSON.stringify(state)})
+    });
+    setSyncStatus('synced');
+  } catch(e) { setSyncStatus('error'); }
+}
+
+function debounceSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 800);
+}
+
+function setSyncStatus(s) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  dot.className = 'sync-dot' + (s !== 'synced' ? ' ' + s : '');
+  lbl.textContent = s === 'saving' ? 'saving…' : s === 'error' ? 'error' : 'synced';
+}
+
+// ─── AUTHOR ──────────────────────────────────────────────────────────────────
+function switchAuthor(v) {
+  ['Founder 1','Founder 2','Founder 3'].forEach((f,i) => {
+    document.getElementById('chip-'+(i+1)).classList.toggle('active', f === v);
+  });
+}
+
+// ─── TABS ────────────────────────────────────────────────────────────────────
+const ALL_TABS = ['overview','financials','flowchart','plan','regions','changelog'];
+function switchTab(t) {
+  ALL_TABS.forEach(id => { document.getElementById('tab-'+id).style.display = id===t ? '' : 'none'; });
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', ALL_TABS[i]===t));
+  if (t==='overview')    { updateMetrics(); updateCharts(); }
+  if (t==='financials')  renderFinancials();
+  if (t==='plan')        renderPlan();
+  if (t==='changelog')   renderChangelog();
+}
+
+// ─── SCENARIO ────────────────────────────────────────────────────────────────
+function setScenario(s) {
+  state.scenario = s;
+  ['conservative','base','aggressive'].forEach(sc =>
+    document.getElementById('pill-'+sc).classList.toggle('active', sc===s));
+  updateMetrics(); updateCharts(); debounceSave();
+}
+function scenarioMult() { return {conservative:0.65, base:1, aggressive:1.45}[state.scenario]; }
+
+// ─── MODEL TOGGLE ────────────────────────────────────────────────────────────
+function setModel(m) {
+  state.model = m;
+  document.getElementById('model-btn-full').classList.toggle('active', m==='full');
+  document.getElementById('model-btn-base').classList.toggle('active', m==='base');
+  const note = document.getElementById('model-note');
+  note.textContent = m === 'full'
+    ? 'Full stack: all five revenue streams including carbon and biodiversity credits. IRR target 8–12%. Best case for LP pitch.'
+    : 'No-credit model: agroforestry + PES + consulting only. Tests resilience if voluntary carbon markets remain depressed. Useful for downside stress-testing.';
+  renderFinancials();
+  updateMetrics();
+  updateCharts();
+  debounceSave();
+}
+
+// ─── YEAR DATA ───────────────────────────────────────────────────────────────
+function interpolate(row, yr) {
+  const pts = [{y:1,v:row.y1},{y:3,v:row.y3},{y:5,v:row.y5},{y:8,v:row.y8},{y:10,v:row.y10}];
+  for (let i=0; i<pts.length-1; i++) {
+    if (yr >= pts[i].y && yr <= pts[i+1].y) {
+      const t = (yr - pts[i].y) / (pts[i+1].y - pts[i].y);
+      return pts[i].v + (pts[i+1].v - pts[i].v) * t;
+    }
+  }
+  return yr < 1 ? pts[0].v : pts[pts.length-1].v;
+}
+
+function getYearData() {
+  const m = scenarioMult();
+  const revRows = state.revenue[state.model] || state.revenue.full;
+  return Array.from({length:10}, (_,i) => {
+    const yr = i+1;
+    const rev = revRows.reduce((s,r) => s + Math.max(0, interpolate(r, yr)), 0) * m;
+    const cost = state.costs.reduce((s,c) => s + Math.max(0, interpolate(c, yr)), 0);
+    return {yr, rev:Math.round(rev), cost:Math.round(cost), net:Math.round(rev-cost)};
+  });
+}
+
+// ─── METRICS ─────────────────────────────────────────────────────────────────
+function updateMetrics() {
+  const data = getYearData();
+  const yr10 = data[9], yr5 = data[4];
+  const haEconRows = state.haEcon[state.model] || state.haEcon.full;
+  const haNet = haEconRows.reduce((s,h) => s + Number(h.val), 0);
+  document.getElementById('metrics-grid').innerHTML = `
+    <div class="metric"><div class="metric-label">Net / ha (30 yr)</div>
+      <div class="metric-value" style="color:${haNet>=0?'#0F6E56':'#a32d2d'};font-size:18px">$${Math.abs(Math.round(haNet)).toLocaleString()}</div>
+      <div class="metric-sub">${haNet>=0?'net positive':'net negative'} · ${state.model==='full'?'full stack':'no-credit'}</div></div>
+    <div class="metric"><div class="metric-label">Revenue yr 5</div>
+      <div class="metric-value">$${yr5.rev}k</div><div class="metric-sub">credits begin</div></div>
+    <div class="metric"><div class="metric-label">Revenue yr 10</div>
+      <div class="metric-value">$${yr10.rev}k</div><div class="metric-sub">${state.scenario} · ${state.model==='full'?'full':'no-credit'}</div></div>
+    <div class="metric"><div class="metric-label">Target IRR</div>
+      <div class="metric-value">${state.model==='full'?'8–12%':'4–6%'}</div>
+      <div class="metric-sub">${state.model==='full'?'15-yr horizon':'conservative estimate'}</div></div>
+  `;
+}
+
+// ─── CHARTS ──────────────────────────────────────────────────────────────────
+let revenueChart, cashChart;
+function updateCharts() {
+  const data = getYearData();
+  const labels = data.map(d => 'Yr '+d.yr);
+  const gc = 'rgba(0,0,0,0.05)', tc = '#999';
+
+  if (revenueChart) revenueChart.destroy();
+  revenueChart = new Chart(document.getElementById('revenueChart'), {
+    type:'bar', data:{labels, datasets:[
+      {label:'Revenue',data:data.map(d=>d.rev),backgroundColor:'rgba(29,158,117,.65)',borderRadius:2},
+      {label:'Costs',  data:data.map(d=>d.cost),backgroundColor:'rgba(163,45,45,.45)',borderRadius:2},
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:gc},ticks:{color:tc,font:{size:10}}},
+              y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>'$'+v+'k'}}}}
+  });
+
+  let cum = 0;
+  const cashFlow = data.map(d => { cum += d.net; return Math.round(cum); });
+  if (cashChart) cashChart.destroy();
+  cashChart = new Chart(document.getElementById('cashChart'), {
+    type:'line', data:{labels, datasets:[{
+      label:'Cumulative net', data:cashFlow,
+      borderColor:'#185FA5', backgroundColor:'rgba(24,95,165,0.07)',
+      fill:true, tension:0.35, pointRadius:2
+    }]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{grid:{color:gc},ticks:{color:tc,font:{size:10}}},
+              y:{grid:{color:gc},ticks:{color:tc,font:{size:10},callback:v=>'$'+v+'k'}}}}
+  });
+}
+
+// ─── FINANCIALS ──────────────────────────────────────────────────────────────
+function renderFinancials() {
+  const haRows = state.haEcon[state.model] || state.haEcon.full;
+  document.getElementById('ha-tbody').innerHTML = haRows.map((h,i) => `
+    <tr>
+      <td><input type="text" value="${h.label}" onchange="updateHaLabel(${i},this.value)"/></td>
+      <td><input type="number" value="${h.val}" onchange="updateHaVal(${i},this.value)"/></td>
+      <td style="color:var(--muted);font-size:11px">${h.notes}</td>
+    </tr>`).join('');
+  updateHaNet();
+
+  const revRows = state.revenue[state.model] || state.revenue.full;
+  document.getElementById('rev-tbody').innerHTML = revRows.map((r,i) => `
+    <tr>
+      <td><input type="text" value="${r.label}" onchange="updateRevLabel(${i},this.value)"/></td>
+      <td><input type="number" value="${r.y1}"  onchange="updateRevVal(${i},'y1',this.value)"/></td>
+      <td><input type="number" value="${r.y3}"  onchange="updateRevVal(${i},'y3',this.value)"/></td>
+      <td><input type="number" value="${r.y5}"  onchange="updateRevVal(${i},'y5',this.value)"/></td>
+      <td><input type="number" value="${r.y8}"  onchange="updateRevVal(${i},'y8',this.value)"/></td>
+      <td><input type="number" value="${r.y10}" onchange="updateRevVal(${i},'y10',this.value)"/></td>
+    </tr>`).join('');
+
+  document.getElementById('cost-tbody').innerHTML = state.costs.map((c,i) => `
+    <tr>
+      <td><input type="text" value="${c.label}" onchange="updateCostLabel(${i},this.value)"/></td>
+      <td><input type="number" value="${c.y1}"  onchange="updateCostVal(${i},'y1',this.value)"/></td>
+      <td><input type="number" value="${c.y3}"  onchange="updateCostVal(${i},'y3',this.value)"/></td>
+      <td><input type="number" value="${c.y5}"  onchange="updateCostVal(${i},'y5',this.value)"/></td>
+      <td><input type="number" value="${c.y8}"  onchange="updateCostVal(${i},'y8',this.value)"/></td>
+      <td><input type="number" value="${c.y10}" onchange="updateCostVal(${i},'y10',this.value)"/></td>
+    </tr>`).join('');
+  updateNetYr10();
+  setModel(state.model); // refresh note
+}
+
+function updateHaNet() {
+  const rows = state.haEcon[state.model] || state.haEcon.full;
+  const net = rows.reduce((s,h) => s+Number(h.val), 0);
+  const el = document.getElementById('ha-net');
+  if (el) { el.textContent = '$'+Math.round(net).toLocaleString(); el.style.color = net>=0?'#0F6E56':'#a32d2d'; }
+}
+function updateNetYr10() {
+  const revRows = state.revenue[state.model] || state.revenue.full;
+  const revY10 = revRows.reduce((s,r) => s+Number(r.y10), 0);
+  const costY10 = state.costs.reduce((s,c) => s+Number(c.y10), 0);
+  const net = Math.round(revY10 - costY10);
+  const el = document.getElementById('net-yr10');
+  if (el) { el.textContent = '$'+Math.abs(net)+'k'; el.style.color = net>=0?'#0F6E56':'#a32d2d'; }
+}
+
+function getAuthor() { return document.getElementById('author-select').value; }
+function logChange(section, field, oldVal, newVal) {
+  state.changelog.unshift({author:getAuthor(), section, field,
+    oldVal:String(oldVal).substring(0,50), newVal:String(newVal).substring(0,50),
+    ts:new Date().toISOString()});
+  if (state.changelog.length > 150) state.changelog.pop();
+}
+
+function updateHaVal(i,v) { const rows=state.haEcon[state.model]; const old=rows[i].val; rows[i].val=Number(v); logChange('Ha econ',rows[i].label,old,v); updateHaNet(); debounceSave(); }
+function updateHaLabel(i,v) { const rows=state.haEcon[state.model]; const old=rows[i].label; rows[i].label=v; logChange('Ha econ','Label',old,v); debounceSave(); }
+function updateRevVal(i,f,v) { const rows=state.revenue[state.model]; const old=rows[i][f]; rows[i][f]=Number(v); logChange('Revenue',rows[i].label+' '+f,old,v); updateNetYr10(); debounceSave(); }
+function updateRevLabel(i,v) { const rows=state.revenue[state.model]; const old=rows[i].label; rows[i].label=v; logChange('Revenue','Label',old,v); debounceSave(); }
+function updateCostVal(i,f,v) { const old=state.costs[i][f]; state.costs[i][f]=Number(v); logChange('Costs',state.costs[i].label+' '+f,old,v); updateNetYr10(); debounceSave(); }
+function updateCostLabel(i,v) { const old=state.costs[i].label; state.costs[i].label=v; logChange('Costs','Label',old,v); debounceSave(); }
+function addRevRow() { state.revenue[state.model].push({label:'New stream',y1:0,y3:0,y5:0,y8:0,y10:0}); logChange('Revenue','Rows','','Added'); renderFinancials(); debounceSave(); }
+function addCostRow() { state.costs.push({label:'New cost',y1:0,y3:0,y5:0,y8:0,y10:0}); logChange('Costs','Rows','','Added'); renderFinancials(); debounceSave(); }
+
+// ─── PLAN ────────────────────────────────────────────────────────────────────
+const planLabels = {
+  problem:'Problem', solution:'Solution & fund structure', market:'Market & opportunity',
+  differentiation:'Differentiation', gtm:'Go-to-market & regions',
+  team:'Team', risks:'Key risks & mitigants'
+};
+function renderPlan() {
+  document.getElementById('plan-fields').innerHTML = Object.entries(state.plan).map(([k,v]) => `
+    <div class="plan-field">
+      <label>${planLabels[k]}</label>
+      <textarea id="plan-${k}" onblur="savePlanField('${k}')">${v}</textarea>
+    </div>`).join('');
+}
+function savePlanField(k) {
+  const el = document.getElementById('plan-'+k); if(!el) return;
+  const nv = el.value;
+  if (nv !== state.plan[k]) { logChange('Business plan', planLabels[k], state.plan[k].substring(0,40), nv.substring(0,40)); state.plan[k]=nv; debounceSave(); }
+}
+
+// ─── CHANGELOG ───────────────────────────────────────────────────────────────
+function renderChangelog() {
+  const el = document.getElementById('changelog-list');
+  if (!state.changelog.length) { el.innerHTML='<div class="empty-state">No changes recorded yet. Start editing to track history.</div>'; return; }
+  const avc = {'Founder 1':'chip-1','Founder 2':'chip-2','Founder 3':'chip-3'};
+  const init = {'Founder 1':'F1','Founder 2':'F2','Founder 3':'F3'};
+  const bgc  = {'Founder 1':'#EEEDFE','Founder 2':'#E1F5EE','Founder 3':'#FAEEDA'};
+  const txtc = {'Founder 1':'#3C3489','Founder 2':'#085041','Founder 3':'#633806'};
+  el.innerHTML = state.changelog.map(e => {
+    const d = new Date(e.ts);
+    const ts = d.toLocaleDateString('pt-BR')+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+    return `<div class="log-entry">
+      <div class="log-avatar" style="background:${bgc[e.author]||'#eee'};color:${txtc[e.author]||'#333'}">${init[e.author]||'?'}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-weight:500">${e.author}</span>
+          <span class="log-badge">${e.section}</span>
+        </div>
+        <div class="log-field">${e.field}${e.oldVal?' · <span style="text-decoration:line-through;opacity:.5">'+e.oldVal+'</span> → '+e.newVal:''}</div>
+        <div class="log-time">${ts}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+(async () => {
+  await loadState();
+  // sync pill and model button to loaded state
+  ['conservative','base','aggressive'].forEach(s =>
+    document.getElementById('pill-'+s).classList.toggle('active', s===state.scenario));
+  document.getElementById('model-btn-full').classList.toggle('active', state.model==='full');
+  document.getElementById('model-btn-base').classList.toggle('active', state.model==='base');
+  updateMetrics();
+  updateCharts();
+})();
+</script>
+</body>
+</html>
